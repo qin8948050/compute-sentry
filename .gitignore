@@ -1,0 +1,24 @@
+# Build and Binary
+/build/
+/bin/
+*.so
+*.o
+*.a
+
+# Go
+/vendor/
+/spy/build/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# AI Assistant Artifacts
+.gemini/
+.agents/
+
+# Logs
+*.log
