@@ -12,6 +12,7 @@
 # IDE and OS
 .vscode/
 .idea/
+.cache/
 .DS_Store
 *.swp
 *.swo
