@@ -11,6 +11,7 @@ Compute-Sentry 是一款 K8s 原生的算力治理系统，旨在通过非侵入
 *   [**项目方案书 (Technical Scheme)**](./docs/Compute-Sentry项目方案.md) - 深度解析核心痛点、技术创新与总体架构。
 *   [**开发路线与业务逻辑 (Roadmap)**](./docs/Compute-Sentry开发路线与业务逻辑.md) - 四阶段开发计划、详细业务流转及任务状态跟踪。
 *   [**开发规范与准则 (Guidelines)**](./docs/DEVELOPMENT.md) - 参与项目贡献必须遵循的 C++/Go 编码标准与性能原则。
+*   [**二阶段 Mock 验证指南 (Phase 2 Mock Guide)**](./docs/PHASE2_VERIFICATION.md) - 针对 Operator 与 Webhook 注入逻辑的单元测试与 Mock 验证手册。
 *   [**AI 协作手册 (GEMINI.md)**](./GEMINI.md) - 专门用于 AI 开发过程中的任务追踪、进度标记与提交参考。
 
 ---

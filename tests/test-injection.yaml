@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-injection
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-injection
+  template:
+    metadata:
+      labels:
+        app: test-injection
+      annotations:
+        compute-sentry.aiguard.io/inject: "true"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"

@@ -12,6 +12,19 @@
 - [x] **任务 1.3**: Mock 训练环境搭建与劫持功能验证
 - [x] **任务 1.4**: **Phase 1 Demo**: 验证非侵入式劫持与数据产出
 
+### Phase 2: K8s 治理集成期 (Governance Integration)
+- [x] **任务 2.1**: Compute-Sentry Operator 骨架搭建与 Webhook 实现
+- [x] **任务 2.2**: Pod Mutator (LD_PRELOAD & UDS) 注入逻辑实现
+- [x] **任务 2.3**: InitContainer 算力硬准入预检程序实现
+- [x] **任务 2.4**: **Phase 2 Demo**: 验证 K8s 原生自动注入与准入控制 (Unit Tests Verified)
+- [ ] **任务 2.5**: **跨节点自动部署**: (计划在 Phase 3 通过 Agent 自动化实现)
+
+### Phase 3: 全栈观测闭环期 (Observability)
+- [ ] **任务 3.1**: Compute-Sentry Agent (DaemonSet) 实现与 .so 自动分发
+- [ ] **任务 3.2**: Prometheus Metrics 暴露与指标聚合逻辑实现
+- [ ] **任务 3.3**: Grafana 3D 拓扑看板与物理拓扑映射实现
+- [ ] **任务 3.4**: **Phase 3 Demo**: 验证从算子劫持到全栈看板的实时观测
+
 ---
 
 ## 2. 提交规范参考 (Commit Standards)
