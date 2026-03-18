@@ -99,21 +99,12 @@ func (m *PodMutator) Handle(ctx context.Context, req admission.Request) admissio
 		},
 	})
 
-	// Add Binary Volume (ConfigMap based)
+	// Add Binary Volume (HostPath from Agent)
 	pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
 		Name: "compute-sentry-bin",
 		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: "compute-sentry-precheck",
-				},
-				Items: []corev1.KeyToPath{
-					{
-						Key:  "precheck.sh",
-						Path: "precheck.sh",
-					},
-				},
-				DefaultMode: func(i int32) *int32 { return &i }(0755),
+			HostPath: &corev1.HostPathVolumeSource{
+				Path: "/opt/compute-sentry/bin",
 			},
 		},
 	})
