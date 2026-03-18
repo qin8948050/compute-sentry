@@ -15,14 +15,14 @@ var (
 			Help:    "Latency of NCCL operations in microseconds.",
 			Buckets: prometheus.ExponentialBuckets(10, 2, 10), // 10us to 10ms approx
 		},
-		[]string{"type"},
+		[]string{"type", "node", "switch", "rack"},
 	)
 	ncclOpsCount = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "compute_sentry_nccl_ops_total",
 			Help: "Total number of NCCL operations.",
 		},
-		[]string{"type"},
+		[]string{"type", "node", "switch", "rack"},
 	)
 )
 
@@ -32,11 +32,19 @@ func init() {
 }
 
 type Exporter struct {
-	addr string
+	addr           string
+	nodeName       string
+	switchId       string
+	rackId         string
 }
 
-func NewExporter(addr string) *Exporter {
-	return &Exporter{addr: addr}
+func NewExporter(addr, node, sw, rack string) *Exporter {
+	return &Exporter{
+		addr:     addr,
+		nodeName: node,
+		switchId: sw,
+		rackId:   rack,
+	}
 }
 
 func (e *Exporter) Record(event collector.MetricEvent) {
@@ -50,8 +58,8 @@ func (e *Exporter) Record(event collector.MetricEvent) {
 		typeName = "cudaMemcpy"
 	}
 
-	ncclLatency.WithLabelValues(typeName).Observe(float64(event.DurationUs))
-	ncclOpsCount.WithLabelValues(typeName).Add(float64(event.Count))
+	ncclLatency.WithLabelValues(typeName, e.nodeName, e.switchId, e.rackId).Observe(float64(event.DurationUs))
+	ncclOpsCount.WithLabelValues(typeName, e.nodeName, e.switchId, e.rackId).Add(float64(event.Count))
 }
 
 func (e *Exporter) Start() error {

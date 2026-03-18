@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/qin8948050/compute-sentry/agent/collector"
 	"github.com/qin8948050/compute-sentry/agent/exporter"
@@ -24,27 +29,37 @@ func main() {
 
 	log.Println("Starting Compute-Sentry Agent...")
 
-	// 1. Library Distribution Logic
+	// 1. 获取拓扑标签
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		log.Println("WARNING: NODE_NAME env not set, topology will be unknown")
+		nodeName = "unknown"
+	}
+
+	sw, rack := getTopology(nodeName)
+	log.Printf("Node Topology: Node=%s, Switch=%s, Rack=%s", nodeName, sw, rack)
+
+	// 2. Library Distribution Logic
 	if err := distributeFile(*libSrc, *libDest); err != nil {
 		log.Fatalf("Failed to distribute library: %v", err)
 	}
 	log.Printf("Library distributed to %s", *libDest)
 
-	// 2. Script Distribution Logic
+	// 3. Script Distribution Logic
 	if err := distributeFile(*scriptSrc, *scriptDest); err != nil {
 		log.Fatalf("Failed to distribute script: %v", err)
 	}
 	log.Printf("Script distributed to %s", *scriptDest)
 
-	// 2. Start Collector
+	// 4. Start Collector
 	col := collector.NewCollector(*udsPath)
 	if err := col.Start(); err != nil {
 		log.Fatalf("Failed to start collector: %v", err)
 	}
 	log.Printf("Collector listening on %s", *udsPath)
 
-	// 3. Start Exporter
-	exp := exporter.NewExporter(*metricsAddr)
+	// 5. Start Exporter
+	exp := exporter.NewExporter(*metricsAddr, nodeName, sw, rack)
 	go func() {
 		log.Printf("Exporter listening on %s/metrics", *metricsAddr)
 		if err := exp.Start(); err != nil {
@@ -52,10 +67,43 @@ func main() {
 		}
 	}()
 
-	// 4. Main Loop: Forward events to exporter
+	// 6. Main Loop: Forward events to exporter
 	for event := range col.MetricsChan {
 		exp.Record(event)
 	}
+}
+
+func getTopology(nodeName string) (sw, rack string) {
+	sw, rack = "unknown", "unknown"
+	if nodeName == "unknown" {
+		return
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		log.Printf("Failed to get in-cluster config: %v", err)
+		return
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Printf("Failed to create clientset: %v", err)
+		return
+	}
+
+	node, err := clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		log.Printf("Failed to get node %s info: %v", nodeName, err)
+		return
+	}
+
+	if s, ok := node.Labels["topology.aiguard.io/switch"]; ok {
+		sw = s
+	}
+	if r, ok := node.Labels["topology.aiguard.io/rack"]; ok {
+		rack = r
+	}
+	return
 }
 
 func distributeFile(src, dest string) error {

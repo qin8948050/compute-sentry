@@ -14,6 +14,7 @@ spec:
       labels:
         app: compute-sentry-agent
     spec:
+      serviceAccountName: compute-sentry-agent
       # Use hostPID if needed, but not required for simple UDS collector
       containers:
       - name: agent
@@ -21,6 +22,11 @@ spec:
         imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true # Required for HostPath write access in some environments
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         volumeMounts:
         - name: host-lib
           mountPath: /opt/compute-sentry/lib
