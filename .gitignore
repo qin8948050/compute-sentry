@@ -21,5 +21,9 @@
 .gemini/
 .agents/
 
+# Kubernetes
+*.kubeconfig
+kubeconfig*
+
 # Logs
 *.log
