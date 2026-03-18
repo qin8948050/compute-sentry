@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: compute-sentry-agent
+  namespace: compute-sentry-system
+  labels:
+    app: compute-sentry-agent
+spec:
+  selector:
+    matchLabels:
+      app: compute-sentry-agent
+  template:
+    metadata:
+      labels:
+        app: compute-sentry-agent
+    spec:
+      # Use hostPID if needed, but not required for simple UDS collector
+      containers:
+      - name: agent
+        image: cowell-images.tencentcloudcr.com/app-test/compute-sentry-agent:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true # Required for HostPath write access in some environments
+        volumeMounts:
+        - name: host-lib
+          mountPath: /opt/compute-sentry/lib
+        - name: host-uds
+          mountPath: /var/run/compute-sentry
+        ports:
+        - containerPort: 9091
+          name: metrics
+      volumes:
+      - name: host-lib
+        hostPath:
+          path: /opt/compute-sentry/lib
+          type: DirectoryOrCreate
+      - name: host-uds
+        hostPath:
+          path: /var/run/compute-sentry
+          type: DirectoryOrCreate
