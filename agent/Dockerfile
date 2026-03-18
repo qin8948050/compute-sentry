@@ -18,7 +18,8 @@ FROM m.daocloud.io/docker.io/debian:bookworm-slim
 WORKDIR /app
 COPY --from=spy-builder /app/spy/build/lib/libcompute-sentry-spy.so /app/lib/
 COPY --from=agent-builder /app/agent/agent /app/bin/
+COPY ./scripts/precheck.sh /app/bin/precheck.sh
 
 # Set defaults
 ENTRYPOINT ["/app/bin/agent"]
-CMD ["--lib-src", "/app/lib/libcompute-sentry-spy.so", "--lib-dest", "/opt/compute-sentry/lib/libcompute-sentry-spy.so"]
+CMD ["--lib-src", "/app/lib/libcompute-sentry-spy.so", "--lib-dest", "/opt/compute-sentry/lib/libcompute-sentry-spy.so", "--script-src", "/app/bin/precheck.sh", "--script-dest", "/opt/compute-sentry/bin/precheck.sh"]
