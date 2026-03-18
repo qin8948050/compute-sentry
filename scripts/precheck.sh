@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 echo "[Compute-Sentry Pre-check] Starting node health verification..."
 
 # Example: Check for GPU presence
-if command -v nvidia-smi &> /dev/null; then
+if command -v nvidia-smi > /dev/null 2>&1; then
     echo "[Compute-Sentry Pre-check] GPU detected. Running basic GEMM test..."
     # In a real scenario, we would run a 30s P2P bandwidth or HBM test here.
     # For now, we simulate success.

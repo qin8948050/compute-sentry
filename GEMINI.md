@@ -16,14 +16,16 @@
 - [x] **任务 2.1**: Compute-Sentry Operator 骨架搭建与 Webhook 实现
 - [x] **任务 2.2**: Pod Mutator (LD_PRELOAD & UDS) 注入逻辑实现
 - [x] **任务 2.3**: InitContainer 算力硬准入预检程序实现
-- [x] **任务 2.4**: **Phase 2 Demo**: 验证 K8s 原生自动注入与准入控制 (Unit Tests Verified)
+- [x] **任务 2.4**: **Phase 2 Demo**: 验证 K8s 原生自动注入与准入控制 (Verified)
 - [ ] **任务 2.5**: **跨节点自动部署**: (计划在 Phase 3 通过 Agent 自动化实现)
 
 ### Phase 3: 全栈观测闭环期 (Observability)
-- [ ] **任务 3.1**: Compute-Sentry Agent (DaemonSet) 实现与 .so 自动分发
-- [ ] **任务 3.2**: Prometheus Metrics 暴露与指标聚合逻辑实现
-- [ ] **任务 3.3**: Grafana 3D 拓扑看板与物理拓扑映射实现
-- [ ] **任务 3.4**: **Phase 3 Demo**: 验证从算子劫持到全栈看板的实时观测
+- [x] **任务 3.1**: Compute-Sentry Agent (DaemonSet) 实现与 .so 自动分发 (Verified)
+- [x] **任务 3.2**: Prometheus Metrics 暴露与指标聚合逻辑实现 (Verified)
+- [ ] **任务 3.3**: Grafana Dashboard 模板设计 (PromQL 多维聚合)
+- [ ] **任务 3.4**: 基于 K8s Node Labels 的物理拓扑数据映射
+- [ ] **任务 3.5**: 异构算力基准规整化逻辑实现
+- [ ] **任务 3.6**: **Phase 3 Demo**: 验证从算子劫持到全栈看板的实时观测
 
 ---
 

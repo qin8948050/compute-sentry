@@ -24,6 +24,8 @@ spec:
         volumeMounts:
         - name: host-lib
           mountPath: /opt/compute-sentry/lib
+        - name: host-bin
+          mountPath: /opt/compute-sentry/bin
         - name: host-uds
           mountPath: /var/run/compute-sentry
         ports:
@@ -33,6 +35,10 @@ spec:
       - name: host-lib
         hostPath:
           path: /opt/compute-sentry/lib
+          type: DirectoryOrCreate
+      - name: host-bin
+        hostPath:
+          path: /opt/compute-sentry/bin
           type: DirectoryOrCreate
       - name: host-uds
         hostPath:

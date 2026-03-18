@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:latest
+        image: m.daocloud.io/docker.io/nginx:latest
         resources:
           limits:
             cpu: "100m"
