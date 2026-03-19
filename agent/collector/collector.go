@@ -22,6 +22,7 @@ const (
 // struct MetricEvent { Type type; long long duration_us; size_t count; };
 type MetricEvent struct {
 	Type       MetricType
+	GPUModel   [32]byte
 	_          [4]byte // Padding to align int64
 	DurationUs int64
 	Count      uint64

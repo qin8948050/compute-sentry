@@ -49,9 +49,9 @@ struct MetricEvent {
     };
 
     Type type;
+    char gpu_model[32]; // New field for precise GPU identification
     long long duration_us;
     size_t count;
-    // Add more fields as needed (e.g., comm ID, rank)
 };
 
 } // namespace compute_sentry

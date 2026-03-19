@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"bytes"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,14 +16,14 @@ var (
 			Help:    "Latency of NCCL operations in microseconds.",
 			Buckets: prometheus.ExponentialBuckets(10, 2, 10), // 10us to 10ms approx
 		},
-		[]string{"type", "node", "switch", "rack"},
+		[]string{"type", "node", "switch", "rack", "node_gpu_model", "runtime_gpu_model"},
 	)
 	ncclOpsCount = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "compute_sentry_nccl_ops_total",
 			Help: "Total number of NCCL operations.",
 		},
-		[]string{"type", "node", "switch", "rack"},
+		[]string{"type", "node", "switch", "rack", "node_gpu_model", "runtime_gpu_model"},
 	)
 )
 
@@ -32,18 +33,20 @@ func init() {
 }
 
 type Exporter struct {
-	addr           string
-	nodeName       string
-	switchId       string
-	rackId         string
+	addr          string
+	nodeName      string
+	switchId      string
+	rackId        string
+	nodeGpuModel  string // 从 Node Label 获取的节点级 GPU 型号
 }
 
-func NewExporter(addr, node, sw, rack string) *Exporter {
+func NewExporter(addr, node, sw, rack, nodeGpuModel string) *Exporter {
 	return &Exporter{
-		addr:     addr,
-		nodeName: node,
-		switchId: sw,
-		rackId:   rack,
+		addr:          addr,
+		nodeName:      node,
+		switchId:      sw,
+		rackId:        rack,
+		nodeGpuModel:  nodeGpuModel,
 	}
 }
 
@@ -58,8 +61,22 @@ func (e *Exporter) Record(event collector.MetricEvent) {
 		typeName = "cudaMemcpy"
 	}
 
-	ncclLatency.WithLabelValues(typeName, e.nodeName, e.switchId, e.rackId).Observe(float64(event.DurationUs))
-	ncclOpsCount.WithLabelValues(typeName, e.nodeName, e.switchId, e.rackId).Add(float64(event.Count))
+	// runtimeGpuModel: 从 Spy 运行时检测获取（可能是 MIG 实例）
+	runtimeGpuModel := string(bytes.TrimRight(event.GPUModel[:], "\x00"))
+	if runtimeGpuModel == "" {
+		runtimeGpuModel = "unknown"
+	}
+
+	// nodeGpuModel: 从 Node Label 获取的节点级 GPU 型号
+	nodeGpuModel := e.nodeGpuModel
+	if nodeGpuModel == "" {
+		nodeGpuModel = "unknown"
+	}
+
+	labels := []string{typeName, e.nodeName, e.switchId, e.rackId, nodeGpuModel, runtimeGpuModel}
+
+	ncclLatency.WithLabelValues(labels...).Observe(float64(event.DurationUs))
+	ncclOpsCount.WithLabelValues(labels...).Add(float64(event.Count))
 }
 
 func (e *Exporter) Start() error {

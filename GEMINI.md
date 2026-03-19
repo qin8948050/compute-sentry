@@ -24,7 +24,7 @@
 - [x] **任务 3.2**: Prometheus Metrics 暴露与指标聚合逻辑实现 (Verified)
 - [ ] **任务 3.3**: Grafana Dashboard 模板设计 (PromQL 多维聚合)
 - [ ] **任务 3.4**: 基于 K8s Node Labels 的物理拓扑数据映射
-- [ ] **任务 3.5**: 异构算力基准规整化逻辑实现
+- [x] **任务 3.5**: 异构算力基准规整化逻辑实现 (Verified with Hetero GPUs)
 - [ ] **任务 3.6**: **Phase 3 Demo**: 验证从算子劫持到全栈看板的实时观测
 
 ---

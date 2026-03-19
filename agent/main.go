@@ -36,8 +36,8 @@ func main() {
 		nodeName = "unknown"
 	}
 
-	sw, rack := getTopology(nodeName)
-	log.Printf("Node Topology: Node=%s, Switch=%s, Rack=%s", nodeName, sw, rack)
+	sw, rack, gpu := getTopology(nodeName)
+	log.Printf("Node Topology: Node=%s, Switch=%s, Rack=%s, GPU=%s", nodeName, sw, rack, gpu)
 
 	// 2. Library Distribution Logic
 	if err := distributeFile(*libSrc, *libDest); err != nil {
@@ -59,7 +59,7 @@ func main() {
 	log.Printf("Collector listening on %s", *udsPath)
 
 	// 5. Start Exporter
-	exp := exporter.NewExporter(*metricsAddr, nodeName, sw, rack)
+	exp := exporter.NewExporter(*metricsAddr, nodeName, sw, rack, gpu)
 	go func() {
 		log.Printf("Exporter listening on %s/metrics", *metricsAddr)
 		if err := exp.Start(); err != nil {
@@ -73,8 +73,8 @@ func main() {
 	}
 }
 
-func getTopology(nodeName string) (sw, rack string) {
-	sw, rack = "unknown", "unknown"
+func getTopology(nodeName string) (sw, rack, gpu string) {
+	sw, rack, gpu = "unknown", "unknown", "unknown"
 	if nodeName == "unknown" {
 		return
 	}
@@ -102,6 +102,9 @@ func getTopology(nodeName string) (sw, rack string) {
 	}
 	if r, ok := node.Labels["topology.aiguard.io/rack"]; ok {
 		rack = r
+	}
+	if g, ok := node.Labels["topology.aiguard.io/gpu-model"]; ok {
+		gpu = g
 	}
 	return
 }
