@@ -51,6 +51,25 @@ spec:
                     description: EnableTaint enables tainting the node as NoSchedule
                       when unhealthy
                     type: boolean
+                  nodeTaintThreshold:
+                    description: |-
+                      NodeTaintThreshold defines conditions for tainting the node
+                      based on aggregated pod health. If nil, defaults to tainting
+                      on any single unhealthy pod.
+                    properties:
+                      minUnhealthyPodsCount:
+                        description: |-
+                          MinUnhealthyPodsCount specifies the minimum number of unhealthy
+                          pods required to taint the node.
+                        format: int32
+                        type: integer
+                      minUnhealthyPodsPercentage:
+                        description: |-
+                          MinUnhealthyPodsPercentage specifies the minimum percentage of
+                          unhealthy pods (0-100) required to taint the node.
+                        format: int32
+                        type: integer
+                    type: object
                 type: object
               evalConfig:
                 description: EvalConfig defines health evaluation parameters for the

@@ -97,6 +97,25 @@ type Actions struct {
 	// EnableEvict enables evicting the pod when unhealthy
 	// +optional
 	EnableEvict bool `json:"enableEvict,omitempty"`
+
+	// NodeTaintThreshold defines conditions for tainting the node
+	// based on aggregated pod health. If nil, defaults to tainting
+	// on any single unhealthy pod.
+	// +optional
+	NodeTaintThreshold *NodeTaintThreshold `json:"nodeTaintThreshold,omitempty"`
+}
+
+// NodeTaintThreshold defines conditions for tainting the node based on aggregated pod health.
+type NodeTaintThreshold struct {
+	// MinUnhealthyPodsCount specifies the minimum number of unhealthy
+	// pods required to taint the node.
+	// +optional
+	MinUnhealthyPodsCount *int32 `json:"minUnhealthyPodsCount,omitempty"`
+
+	// MinUnhealthyPodsPercentage specifies the minimum percentage of
+	// unhealthy pods (0-100) required to taint the node.
+	// +optional
+	MinUnhealthyPodsPercentage *int32 `json:"minUnhealthyPodsPercentage,omitempty"`
 }
 
 // ComputeSentryPolicyStatus defines the observed state of ComputeSentryPolicy.

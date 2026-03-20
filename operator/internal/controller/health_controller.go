@@ -6,10 +6,10 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
+	// "k8s.io/apimachinery/pkg/fields" // This import is no longer needed
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -48,31 +48,10 @@ func (r *HealthController) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.Get(ctx, req.NamespacedName, pod)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, nil // Pod deleted, nothing to do
 		}
 		return ctrl.Result{}, err
 	}
-
-	// Check health status
-	healthStatus, exists := pod.Annotations[healthAnnotationKey]
-	if !exists {
-		return ctrl.Result{}, nil
-	}
-
-	if healthStatus == "healthy" {
-		// Attempt to untaint node if this was the last unhealthy pod
-		if err := r.untaintNodeIfPossible(ctx, pod.Spec.NodeName); err != nil {
-			log.Error(err, "Failed to untaint node", "node", pod.Spec.NodeName)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
-	if healthStatus != "unhealthy" {
-		return ctrl.Result{}, nil
-	}
-
-	log.Info("Processing unhealthy pod", "namespace", pod.Namespace, "name", pod.Name, "node", pod.Spec.NodeName)
 
 	// Find matching policy for this pod
 	policy, err := r.findMatchingPolicy(ctx, pod)
@@ -80,26 +59,55 @@ func (r *HealthController) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		log.Error(err, "Failed to find matching policy")
 		return ctrl.Result{}, err
 	}
+	// If no policy found, policy will be nil. evaluateNodeTaintDecision will use aggressive defaults.
 
-	if policy == nil {
-		log.Info("No matching policy found for pod, skipping remediation")
+	// Always evaluate node taint decision when a pod's health status changes
+	// This covers both unhealthy and healthy transitions, ensuring proper taint/untaint.
+	nodeName := pod.Spec.NodeName
+	if nodeName == "" {
+		log.Info("Pod has no nodeName, skipping node taint evaluation", "pod", pod.Name)
 		return ctrl.Result{}, nil
 	}
 
-	// Execute actions based on policy
-	actions := policy.Spec.Actions
-
-	// Taint node if enabled
-	if actions.EnableTaint {
-		if err := r.taintNode(ctx, pod.Spec.NodeName); err != nil {
-			log.Error(err, "Failed to taint node")
+	// Only proceed with node actions if policy explicitly enables Taint
+	// If policy is nil, it means no specific policy matched this pod, aggressive handling for taint should be avoided,
+	// because there is no explicit instruction to taint.
+	if policy == nil || !policy.Spec.Actions.EnableTaint {
+		// If no policy, or policy doesn't enable taint, we should ensure the node is untainted if it was tainted by us.
+		// This covers cases where a policy might be removed or updated to disable tainting.
+		if err := r.untaintNodeIfTaintedByUs(ctx, nodeName); err != nil {
+			log.Error(err, "Failed to ensure node is untainted when no policy or taint disabled", "node", nodeName)
 			return ctrl.Result{}, err
 		}
-		log.Info("Tainted node", "node", pod.Spec.NodeName)
+		return ctrl.Result{}, nil // No policy, or taint not enabled, so no further taint/untaint decisions here.
 	}
 
-	// Evict pod if enabled
-	if actions.EnableEvict {
+
+	// If Taint is enabled in policy, evaluate the decision
+	taintDecision, err := r.evaluateNodeTaintDecision(ctx, nodeName, policy)
+	if err != nil {
+		log.Error(err, "Failed to evaluate node taint decision", "node", nodeName)
+		return ctrl.Result{}, err
+	}
+
+	if taintDecision.ShouldTaint {
+		if err := r.taintNode(ctx, nodeName); err != nil {
+			log.Error(err, "Failed to taint node", "node", nodeName)
+			return ctrl.Result{}, err
+		}
+		log.Info("Tainted node", "node", nodeName, "reason", taintDecision.Reason)
+	} else if taintDecision.ShouldUntaint {
+		if err := r.untaintNode(ctx, nodeName); err != nil {
+			log.Error(err, "Failed to untaint node", "node", nodeName)
+			return ctrl.Result{}, err
+		}
+		log.Info("Untainted node", "node", nodeName, "reason", taintDecision.Reason)
+	}
+
+	// Evict pod if enabled (this is pod-specific, not node-aggregated)
+	// This logic remains as-is, as eviction is for the specific unhealthy pod.
+	healthStatus, exists := pod.Annotations[healthAnnotationKey]
+	if exists && healthStatus == "unhealthy" && policy.Spec.Actions.EnableEvict {
 		// Throttling check to prevent mass eviction (max 5% of matching pods)
 		if err := r.checkEvictionThrottling(ctx, policy); err != nil {
 			log.Info("Eviction throttled to prevent cluster-wide avalanche", "reason", err.Error())
@@ -206,7 +214,7 @@ func (r *HealthController) evictPod(ctx context.Context, pod *corev1.Pod) error 
 		return r.Delete(ctx, pod)
 	}
 
-	eviction := &policyv1beta1.Eviction{
+	eviction := &policyv1.Eviction{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pod.Name,
 			Namespace: pod.Namespace,
@@ -214,34 +222,13 @@ func (r *HealthController) evictPod(ctx context.Context, pod *corev1.Pod) error 
 		DeleteOptions: &metav1.DeleteOptions{},
 	}
 
-	return r.K8sClient.CoreV1().Pods(pod.Namespace).Evict(ctx, eviction)
+	return r.K8sClient.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
 }
 
-// untaintNodeIfPossible removes the unhealthy taint from the node if no unhealthy pods remain
-func (r *HealthController) untaintNodeIfPossible(ctx context.Context, nodeName string) error {
-	if nodeName == "" {
-		return nil
-	}
-
-	// 1. Check if there are any other unhealthy pods on this node
-	podList := &corev1.PodList{}
-	err := r.List(ctx, podList, &client.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", nodeName),
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, p := range podList.Items {
-		if p.Annotations[healthAnnotationKey] == "unhealthy" {
-			// Still have unhealthy pods, keep the taint
-			return nil
-		}
-	}
-
-	// 2. No unhealthy pods, remove the taint
+// untaintNode removes the unhealthy taint from the node
+func (r *HealthController) untaintNode(ctx context.Context, nodeName string) error {
 	node := &corev1.Node{}
-	err = r.Get(ctx, client.ObjectKey{Name: nodeName}, node)
+	err := r.Get(ctx, client.ObjectKey{Name: nodeName}, node)
 	if err != nil {
 		return err
 	}
@@ -262,7 +249,131 @@ func (r *HealthController) untaintNodeIfPossible(ctx context.Context, nodeName s
 
 	nodeCopy := node.DeepCopy()
 	nodeCopy.Spec.Taints = newTaints
-	return r.Update(ctx, nodeCopy)
+	return r.Patch(ctx, node, client.MergeFrom(nodeCopy))
+}
+
+// untaintNodeIfTaintedByUs checks if the node is tainted by us and untaints it
+func (r *HealthController) untaintNodeIfTaintedByUs(ctx context.Context, nodeName string) error {
+	node := &corev1.Node{}
+	err := r.Get(ctx, client.ObjectKey{Name: nodeName}, node)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil // Node not found, nothing to untaint
+		}
+		return fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	isCurrentlyTainted := false
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == noScheduleTaintKey {
+			isCurrentlyTainted = true
+			break
+		}
+	}
+
+	if isCurrentlyTainted {
+		return r.untaintNode(ctx, nodeName)
+	}
+	return nil
+}
+
+// nodePodsHealthStatus holds the aggregated health status of pods on a node
+type nodePodsHealthStatus struct {
+	TotalPods      int
+	UnhealthyPods  int
+	HealthyPods    int
+}
+
+// taintDecision provides the decision to taint or untaint a node
+type taintDecision struct {
+	ShouldTaint   bool
+	ShouldUntaint bool
+	Reason        string
+}
+
+// getNodePodsHealthStatus fetches all pods on a node and aggregates their health status
+func (r *HealthController) getNodePodsHealthStatus(ctx context.Context, nodeName string) (nodePodsHealthStatus, error) {
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.MatchingFields{"spec.nodeName": nodeName},
+	}
+
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		return nodePodsHealthStatus{}, fmt.Errorf("failed to list pods on node %s: %w", nodeName, err)
+	}
+
+	status := nodePodsHealthStatus{}
+	for _, p := range podList.Items {
+		status.TotalPods++
+		if p.Annotations[healthAnnotationKey] == "unhealthy" {
+			status.UnhealthyPods++
+		} else {
+			status.HealthyPods++
+		}
+	}
+	return status, nil
+}
+
+// evaluateNodeTaintDecision evaluates whether a node should be tainted or untainted based on policy and current pod health
+func (r *HealthController) evaluateNodeTaintDecision(ctx context.Context, nodeName string, policy *configv1.ComputeSentryPolicy) (taintDecision, error) {
+	node := &corev1.Node{}
+	err := r.Get(ctx, client.ObjectKey{Name: nodeName}, node)
+	if err != nil {
+		return taintDecision{}, fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	isCurrentlyTainted := false
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == noScheduleTaintKey {
+			isCurrentlyTainted = true
+			break
+		}
+	}
+
+	status, err := r.getNodePodsHealthStatus(ctx, nodeName)
+	if err != nil {
+		return taintDecision{}, err
+	}
+
+	// Default to aggressive: taint if any pod is unhealthy, untaint if all are healthy.
+	shouldTaintAggressive := status.UnhealthyPods > 0
+	shouldUntaintAggressive := status.UnhealthyPods == 0
+
+	// If no NodeTaintThreshold is specified, use the aggressive default
+	if policy == nil || policy.Spec.Actions.NodeTaintThreshold == nil {
+		if shouldTaintAggressive && !isCurrentlyTainted {
+			return taintDecision{ShouldTaint: true, Reason: "aggressive taint: at least one pod is unhealthy"}, nil
+		}
+		if shouldUntaintAggressive && isCurrentlyTainted {
+			return taintDecision{ShouldUntaint: true, Reason: "aggressive untaint: all pods are healthy"}, nil
+		}
+		return taintDecision{}, nil // No change needed
+	}
+
+	threshold := policy.Spec.Actions.NodeTaintThreshold
+	shouldTaintBasedOnThreshold := false
+	
+	if threshold.MinUnhealthyPodsCount != nil && status.UnhealthyPods >= int(*threshold.MinUnhealthyPodsCount) {
+		shouldTaintBasedOnThreshold = true
+	}
+
+	if threshold.MinUnhealthyPodsPercentage != nil && status.TotalPods > 0 {
+		unhealthyPercentage := (float64(status.UnhealthyPods) / float64(status.TotalPods)) * 100
+		if unhealthyPercentage >= float64(*threshold.MinUnhealthyPodsPercentage) {
+			shouldTaintBasedOnThreshold = true
+		}
+	}
+
+	// Make a decision
+	if shouldTaintBasedOnThreshold && !isCurrentlyTainted {
+		return taintDecision{ShouldTaint: true, Reason: fmt.Sprintf("threshold met: %d/%d pods unhealthy", status.UnhealthyPods, status.TotalPods)}, nil
+	}
+
+	if !shouldTaintBasedOnThreshold && isCurrentlyTainted {
+		return taintDecision{ShouldUntaint: true, Reason: fmt.Sprintf("threshold no longer met: %d/%d pods unhealthy", status.UnhealthyPods, status.TotalPods)}, nil
+	}
+
+	return taintDecision{}, nil // No change needed
 }
 
 // SetupWithManager sets up the controller with the Manager

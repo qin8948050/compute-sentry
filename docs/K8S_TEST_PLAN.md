@@ -1,9 +1,13 @@
 # Compute-Sentry K8S 环境测试指南 (Remote Minikube)
 
-本指南用于在远端 Minikube 集群验证 Compute-Sentry 的全链路治理能力，包括：精细化策略注入、硬件准入预检、Agent 分布式观测以及 Operator 安全驱逐。
+本指南旨在提供一个从环境准备、组件部署到核心功能验证的完整测试流程，专注于节点级自愈能力。
 
-## !!重要: KUBECONFIG 配置!!
-请在执行所有 `kubectl` 和 `make` 命令前，确保您已正确设置 `KUBECONFIG` 环境变量，指向您的 Minikube 集群配置。例如：
+## 1. 概述与 Kubeconfig 配置
+
+本指南将引导您在远端 Minikube 集群中，测试 Compute-Sentry 的关键功能，特别是其**基于 Pod 聚合状态的节点自愈逻辑**。
+
+**!!重要: KUBECONFIG 配置!!**
+在执行所有 `kubectl` 和 `make` 命令前，请确保您已正确设置 `KUBECONFIG` 环境变量，指向您的 Minikube 集群配置。例如：
 ```bash
 export KUBECONFIG=./tests/kubeconfig
 # 或者根据您的实际路径
@@ -12,129 +16,299 @@ export KUBECONFIG=./tests/kubeconfig
 
 ---
 
-## 1. 准备工作
+## 2. 环境部署：构建、同步与部署所有组件
 
-### A. 镜像构建 (本地执行)
-```bash
-# 1. 构建 Agent (包含 C++ Spy 库)
-cd agent && make docker-build IMG=compute-sentry-agent:latest
+### A. 镜像构建与同步 (在本地开发环境执行)
 
-# 2. 构建 Operator
-cd ../operator && make docker-build IMG=compute-sentry-operator:latest
-```
+1.  **构建 Agent (包含 C++ Spy 库)**：
+    ```bash
+    cd agent
+    make docker-build IMG=compute-sentry-agent:latest
+    cd .. # 返回项目根目录
+    ```
 
-### B. 镜像同步 (根据您的环境自行同步)
-将构建好的镜像 `compute-sentry-agent:latest` 和 `compute-sentry-operator:latest` 推送到您的远端 Minikube 节点中。
-*提示：如果是 Minikube，通常使用 `minikube image load <image_name>`。*
+2.  **构建 Operator**：
+    ```bash
+    cd operator
+    make docker-build IMG=compute-sentry-operator:latest
+    cd .. # 返回项目根目录
+    ```
 
----
+3.  **镜像同步到 Minikube** (根据您的环境自行同步，以下是 Minikube 示例)：
+    ```bash
+    minikube image load compute-sentry-agent:latest
+    minikube image load compute-sentry-operator:latest
+    ```
+    *提示：如果不是 Minikube，请使用适合您 Kubernetes 环境的镜像推送/加载方式。*
 
-## 2. 部署组件
+### B. 部署 Operator (在 Operator 目录下执行)
 
-### A. 注册 CRD 与 部署 Operator
 ```bash
 cd operator
-# 安装 CRD
+# 1. 安装 CRD (自定义资源定义)
 make install
-# 部署 Operator (确保镜像地址正确)
+
+# 2. 部署 Operator 控制器管理器
 make deploy IMG=compute-sentry-operator:latest
+cd .. # 返回项目根目录
 ```
 
-### B. 部署 Agent (DaemonSet)
+### C. 部署 Agent (DaemonSet)
+
+Agent 需要在每个节点上运行。
 ```bash
-# 部署权限
+# 1. 部署 Agent 所需的 RBAC 权限
 kubectl apply -f manifests/agent-rbac.yaml
-# 部署 Agent
+
+# 2. 部署 Agent DaemonSet
 kubectl apply -f manifests/agent-daemonset.yaml
 ```
 
----
-
-## 3. 测试场景验证
-
-### 场景一：无策略手动注入 (验证回退机制)
-**目标**：验证 Pod 在没有匹配 Policy 时，能否通过 Annotation 成功注入，且 Agent 使用全局默认值。
-
-1. **提交测试 Pod**:
-   ```bash
-   kubectl apply -f tests/test-injection.yaml
-   ```
-2. **验证注入**:
-   * 检查 Pod 是否包含 `compute-sentry-precheck` 初始化容器。
-   * 检查是否**没有** `compute-sentry.aiguard.io/governance-config` Annotation。
-   * 查看 Agent 日志，确认其针对该 Pod 使用了全局默认阈值 (默认 500us)。
-
-### 场景二：精细化策略注入 (验证策略优先级)
-**目标**：验证 `ComputeSentryPolicy` 定义的阈值能正确注入到 Pod 中。
-
-1. **创建策略**:
-   ```yaml
-    apiVersion: config.aiguard.io/v1
-    kind: ComputeSentryPolicy
-    metadata:
-      name: example-gpu-policy
-      namespace: default # 或者您的 Pod 所在的命名空间
-    spec:
-      # 选择器：定义这个策略适用于哪些 Pod
-      # 这里的例子是匹配所有带有 app: my-gpu-app 标签的 Pod
-      selector:
-        matchLabels:
-          app: test-injection
-      
-      # SpyConfig：配置 Spy Sidecar 的注入行为
-      spyConfig:
-        enabled: true # 如果为 true，则在匹配的 Pod 上注入 Spy 相关的 sidecar
-
-      # Thresholds：定义性能健康阈值
-      thresholds:
-        maxNcclLatencyUs: 150        # NCCL AllReduce 操作的最大允许延迟 (微秒)
-        maxJitterUs: 50              # NCCL 操作的最大允许抖动 (微秒) - 注意：目前 Agent 尚未实现对 Jitter 的具体评估逻辑
-        minP2PBandwidthGbps: 25      # P2P 内存拷贝的最小带宽要求 (GB/s) - 用于 InitContainer 预检
-        minHbmBandwidthGbps: 1200    # HBM (高带宽显存) 的最小带宽要求 (GB/s) - 用于 InitContainer 预检
-
-      # EvalConfig：定义 Agent 侧的健康评估参数
-      evalConfig:
-        windowSize: 10               # 滑动窗口大小 (秒)，在此窗口内评估错误次数
-        errorCountLimit: 5           # 在 windowSize 内，允许的最大违规次数，超过则标记为 unhealthy
-
-      # Actions：定义当 Pod 被标记为 unhealthy 时的补救措施
-      actions:
-        enableTaint: true            # 如果为 true，则给 Pod 所在节点打上污点 (NoSchedule)
-        enableEvict: true            # 如果为 true，则驱逐该 unhealthy 的 Pod
-
-   ```
-2. **提交匹配该策略的 Pod** (Label 包含 `app: llm-train`)。
-3. **验证**:
-   * 检查 Pod 的 Annotation `compute-sentry.aiguard.io/governance-config` 是否包含 `{"maxNcclLatencyUs": 100, ...}`。
-
-### 场景三：硬件准入阻断 (验证 Precheck)
-**目标**：验证硬件指标不达标时，Pod 无法启动。
-
-1. **修改策略**：将 `minP2PBandwidthGbps` 设置为 `100` (模拟无法达到的高要求)。
-2. **提交 Pod**。
-3. **现象**：Pod 的 InitContainer 应该报错退出。
-4. **日志检查**:
-   ```bash
-   kubectl logs <pod-name> -c compute-sentry-precheck
-   # 预期输出: ERROR: P2P Bandwidth below threshold! Blocking startup.
-   ```
-
-### 场景四：实时治理与安全节流 (验证 Eviction & Throttle)
-**目标**：验证算子变慢后触发驱逐，且 Operator 具备自我保护能力。
-
-1. **模拟故障**：进入业务容器运行 `mock_nccl`，产生超过 100us 的延迟。
-2. **观察状态切换**:
-   * Agent 发现异常，将 Pod 标注为 `health: unhealthy`。
-3. **观察驱逐**:
-   * Operator 监听到 `unhealthy` 状态，发起 `Eviction` 请求。
-4. **验证节流**：
-   * 批量制造 10 个异常 Pod。
-   * 检查 Operator 日志，验证是否触发了“5% 阈值保护”，停止了进一步的驱逐。
+**验证部署状态**：
+*   检查 Operator Pod 是否运行正常：`kubectl get pods -n compute-sentry-system -l control-plane=controller-manager`
+*   检查 Agent Pod 是否在每个节点上运行正常：`kubectl get pods -n compute-sentry-system -l app=compute-sentry-agent`
 
 ---
 
-## 4. 常用调试命令
+## 3. 核心功能测试：节点级自愈与安全节流
 
-* **查看治理事件**: `kubectl get events --sort-by=.lastTimestamp`
-* **查看 Operator 日志**: `kubectl logs -l control-plane=controller-manager -n compute-sentry-system -c manager`
-* **检查节点污点**: `kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints`
+**目标**：验证单个 Pod 异常后的驱逐能力，以及 Operator 基于 Pod 聚合状态的节点污点能力，同时具备自我保护机制。
+
+### 3.1. 准备阶段：配置策略
+
+*   创建一个 `ComputeSentryPolicy`，例如 `test-node-healing-policy.yaml`。此策略将定义当多少个 Pod 异常时触发节点污点。
+
+```yaml
+# test-node-healing-policy.yaml
+apiVersion: config.aiguard.io/v1
+kind: ComputeSentryPolicy
+metadata:
+  name: test-node-healing-policy
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: node-healing-test
+  actions:
+    enableTaint: true
+    enableEvict: true
+    nodeTaintThreshold:
+      minUnhealthyPodsCount: 2 # 示例：至少2个Pod异常才打污点。您可以根据需要调整为 minUnhealthyPodsPercentage。
+```
+*   应用策略：
+    ```bash
+    kubectl apply -f test-node-healing-policy.yaml
+    ```
+
+### 3.2. 验证单 Pod 驱逐 (不触发节点污点)
+
+*   提交一个 Pod (例如 `pod-test-1.yaml`)，其 Label 匹配上述策略 (例如 `app: node-healing-test`)。
+
+```yaml
+# pod-test-1.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-test-1
+  namespace: default
+  labels:
+    app: node-healing-test
+spec:
+  containers:
+  - name: pause
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c", "sleep 3600"] # 保持 Pod 运行
+  restartPolicy: Always
+```
+*   应用 Pod：
+    ```bash
+    kubectl apply -f pod-test-1.yaml
+    ```
+*   等待 `pod-test-1` 进入 `Running` 状态：
+    ```bash
+    kubectl get pod pod-test-1 -n default -o jsonpath='{.status.phase}' # 直到输出 "Running"
+    ```
+*   获取 `pod-test-1` 所在的节点名称 (后续验证节点污点需要)：
+    ```bash
+    export NODE_NAME=$(kubectl get pod pod-test-1 -n default -o jsonpath='{.spec.nodeName}')
+    echo "Pod 'pod-test-1' 运行在节点: $NODE_NAME"
+    ```
+*   **模拟 `pod-test-1` 故障** (通过 Annotation，模拟 Agent 检测到异常)：
+    ```bash
+    kubectl annotate pod pod-test-1 -n default compute-sentry.aiguard.io/health=unhealthy --overwrite
+    ```
+*   **预期行为**：
+    *   `pod-test-1` 被驱逐 (即 Pod 状态变为 `Terminating` 或直接消失)。
+    *   节点 **不会** 被打上 `aiguard.io/subhealth` 污点 (因为尚未达到 `minUnhealthyPodsCount: 2` 的阈值)。
+*   **验证命令**：
+    *   确认 Pod 状态：`kubectl get pod pod-test-1 -n default` (应显示 `Terminating` 或 `NotFound`)
+    *   确认节点无污点：`kubectl get nodes $NODE_NAME -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints` (确认输出中不包含 `aiguard.io/subhealth` 污点)
+
+### 3.3. 验证节点污点聚合逻辑
+
+*   创建另外两个 Pod (例如 `pod-test-2.yaml` 和 `pod-test-3.yaml`)，确保它们的 Label 匹配上述策略，并运行在与 `pod-test-1` 相同的节点上。
+
+```yaml
+# pod-test-2.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-test-2
+  namespace: default
+  labels:
+    app: node-healing-test
+spec:
+  containers:
+  - name: pause
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c", "sleep 3600"]
+  restartPolicy: Always
+---
+# pod-test-3.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-test-3
+  namespace: default
+  labels:
+    app: node-healing-test
+spec:
+  containers:
+  - name: pause
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c", "sleep 3600"]
+  restartPolicy: Always
+```
+*   应用 Pods：
+    ```bash
+    kubectl apply -f pod-test-2.yaml
+    kubectl apply -f pod-test-3.yaml
+    ```
+*   等待 `pod-test-2` 和 `pod-test-3` 进入 `Running` 状态。
+*   **模拟 `pod-test-2` 故障**：
+    ```bash
+    kubectl annotate pod pod-test-2 -n default compute-sentry.aiguard.io/health=unhealthy --overwrite
+    ```
+*   **预期行为**：
+    *   `pod-test-2` 被驱逐。
+    *   节点 **仍然不会** 被打上 `aiguard.io/subhealth` 污点 (因为目前只有 1 个异常 Pod 曾存在，未达 2 个的阈值)。
+*   **模拟 `pod-test-3` 故障**：
+    ```bash
+    kubectl annotate pod pod-test-3 -n default compute-sentry.aiguard.io/health=unhealthy --overwrite
+    ```
+*   **预期行为**：
+    *   `pod-test-3` 被驱逐。
+    *   节点 **将会** 被打上 `aiguard.io/subhealth=true:NoSchedule` 污点 (因为已达到 `minUnhealthyPodsCount: 2` 的阈值)。
+*   **验证命令**：
+    *   确认 Pod 状态：`kubectl get pod pod-test-2 -n default` 和 `kubectl get pod pod-test-3 -n default` (应显示 `Terminating` 或 `NotFound`)
+    *   确认节点已有污点：`kubectl get nodes $NODE_NAME -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints` (确认输出中包含 `aiguard.io/subhealth` 污点)
+
+### 3.4. 验证节点污点自动恢复
+
+*   待所有异常 Pod 被驱逐且不再存在任何匹配策略的 Pod 后 (例如删除所有 `app: node-healing-test` 的 Pod)：
+    ```bash
+    kubectl delete pod -l app=node-healing-test -n default --ignore-not-found
+    ```
+*   **预期行为**：节点的 `aiguard.io/subhealth` 污点自动移除。
+*   **验证命令**：
+    ```bash
+    kubectl get nodes $NODE_NAME -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints # 确认输出中不包含 aiguard.io/subhealth 污点
+    ```
+
+### 3.5. 验证安全节流
+
+*   **准备阶段**：
+    *   创建一个新的策略，例如 `test-throttling-policy.yaml`，其 `actions.nodeTaintThreshold` 可配置为更宽松的阈值（例如 `minUnhealthyPodsCount: 1`），并设置 `enableEvict: true`。
+    *   批量创建 10 个以上匹配此策略的 Pod (例如 `app: throttling-test`)。
+    *   例如，您可以使用循环命令创建多个 Pod：
+    ```bash
+    for i in $(seq 1 15); do
+      cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: throttling-pod-$i
+  namespace: default
+  labels:
+    app: throttling-test
+spec:
+  containers:
+  - name: pause
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c", "sleep 3600"]
+  restartPolicy: Always
+EOF
+    done
+    ```
+*   **模拟故障**：
+    *   对这 10 个以上 Pod 同时模拟故障（通过 Annotation）。
+    ```bash
+    for i in $(seq 1 15); do
+      kubectl annotate pod throttling-pod-$i -n default compute-sentry.aiguard.io/health=unhealthy --overwrite &
+    done
+    wait
+    ```
+*   **预期行为**：Operator 会根据其内部的安全节流配置（例如，默认 5% 的驱逐率）暂停部分 Pod 的驱逐，防止短时间内大量 Pod 被删除。您会观察到部分 Pod 被驱逐，而另一些 Pod 暂时保留。
+*   **验证命令**：
+    *   检查 Operator 日志，查找节流相关的输出：
+        ```bash
+        kubectl logs -l control-plane=controller-manager -n compute-sentry-system -c manager | grep "Eviction throttled"
+        ```
+    *   持续观察 Pod 状态：
+        ```bash
+        kubectl get pods -l app=throttling-test -n default
+        ```
+        您会看到一些 Pod 处于 `Terminating` 或已消失，而另一些可能仍处于 `Running` 状态，等待节流解除后被驱逐。
+
+---
+
+## 4. 环境清理
+
+测试完成后，请务必清理您部署的所有资源：
+
+1.  **删除所有测试 Pods 和 Policy**：
+    ```bash
+    kubectl delete -f test-node-healing-policy.yaml --ignore-not-found
+    kubectl delete -f pod-test-1.yaml --ignore-not-found
+    kubectl delete -f pod-test-2.yaml --ignore-not-found
+    kubectl delete -f pod-test-3.yaml --ignore-not-found
+    kubectl delete -f test-throttling-policy.yaml --ignore-not-found # 如果创建了节流测试策略
+    kubectl delete pod -l app=node-healing-test -n default --ignore-not-found
+    kubectl delete pod -l app=throttling-test -n default --ignore-not-found
+    ```
+2.  **卸载 Agent DaemonSet 和 RBAC**：
+    ```bash
+    kubectl delete -f manifests/agent-daemonset.yaml --ignore-not-found
+    kubectl delete -f manifests/agent-rbac.yaml --ignore-not-found
+    ```
+3.  **卸载 Operator**：
+    ```bash
+    cd operator
+    make undeploy
+    make uninstall
+    cd .. # 返回项目根目录
+    ```
+4.  **清理镜像** (可选)：
+    *   如果您在 Minikube 中加载了镜像，可能需要手动清理：
+        ```bash
+        minikube image rm compute-sentry-agent:latest
+        minikube image rm compute-sentry-operator:latest
+        ```
+    *   或者直接清理 Docker 镜像：
+        ```bash
+        docker rmi compute-sentry-agent:latest
+        docker rmi compute-sentry-operator:latest
+        ```
+
+---
+
+## 5. 常用调试命令
+
+*   **查看 Kubernetes 事件**: `kubectl get events --sort-by=.lastTimestamp`
+*   **查看 Operator 日志**: `kubectl logs -l control-plane=controller-manager -n compute-sentry-system -c manager`
+*   **查看 Agent 日志** (选择其中一个 Agent Pod)：
+    ```bash
+    AGENT_POD=$(kubectl get pods -n compute-sentry-system -l app=compute-sentry-agent -o jsonpath='{.items[0].metadata.name}')
+    kubectl logs $AGENT_POD -n compute-sentry-system
+    ```
+*   **检查节点污点**: `kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints`
