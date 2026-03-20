@@ -5,29 +5,8 @@
 ## 1. 任务完成度看板 (Project Progress Dashboard)
 
 > [!TIP]
-> 每次完成子任务后，AI 将同步更新此看板及 `./docs/Compute-Sentry开发路线与业务逻辑.md` 中的状态。例如：
-### Phase 1: 感知原型期 (Perception Layer)
-- [x] **任务 1.1**: C++ Spy 骨架搭建与 `LD_PRELOAD` 劫持逻辑实现
-- [x] **任务 1.2**: 无锁异步队列与 UDS 通信系统实现
+> 每次完成子任务后，AI 将同步更新`./docs/Compute-Sentry开发路线与业务逻辑.md` 中的状态。例如：
 - [x] **任务 1.3**: Mock 训练环境搭建与劫持功能验证
-- [x] **任务 1.4**: **Phase 1 Demo**: 验证非侵入式劫持与数据产出
-
-### Phase 2: K8s 治理集成期 (Governance Integration)
-- [x] **任务 2.1**: Compute-Sentry Operator 骨架搭建与 Webhook 实现
-- [x] **任务 2.2**: Pod Mutator (LD_PRELOAD & UDS) 注入逻辑实现
-- [x] **任务 2.3**: InitContainer 算力硬准入预检程序实现
-- [x] **任务 2.4**: **Phase 2 Demo**: 验证 K8s 原生自动注入与准入控制 (Verified)
-- [ ] **任务 2.5**: **跨节点自动部署**: (计划在 Phase 3 通过 Agent 自动化实现)
-
-### Phase 3: 全栈观测闭环期 (Observability)
-- [x] **任务 3.1**: Compute-Sentry Agent (DaemonSet) 实现与 .so 自动分发 (Verified)
-- [x] **任务 3.2**: Prometheus Metrics 暴露与指标聚合逻辑实现 (Verified)
-- [ ] **任务 3.3**: Grafana Dashboard 模板设计 (PromQL 多维聚合)
-- [ ] **任务 3.4**: 基于 K8s Node Labels 的物理拓扑数据映射
-- [x] **任务 3.5**: 异构算力基准规整化逻辑实现 (Verified with Hetero GPUs)
-- [ ] **任务 3.6**: **Phase 3 Demo**: 验证从算子劫持到全栈看板的实时观测
-
----
 
 ## 2. 提交规范参考 (Commit Standards)
 
