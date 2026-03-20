@@ -19,13 +19,15 @@ const (
 
 // MetricEvent corresponds to the struct in C++
 // We must be careful with padding. C++ struct:
-// struct MetricEvent { Type type; long long duration_us; size_t count; };
+// struct MetricEvent { Type type; char gpu_model[32]; char pod_name[64]; char pod_namespace[64]; long long duration_us; size_t count; };
 type MetricEvent struct {
-	Type       MetricType
-	GPUModel   [32]byte
-	_          [4]byte // Padding to align int64
-	DurationUs int64
-	Count      uint64
+	Type         MetricType
+	GPUModel     [32]byte
+	PodName      [64]byte
+	PodNamespace [64]byte
+	_            [4]byte // Padding to align int64
+	DurationUs   int64
+	Count        uint64
 }
 
 type Collector struct {

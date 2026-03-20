@@ -25,6 +25,11 @@ func main() {
 	scriptSrc := flag.String("script-src", "/app/bin/precheck.sh", "Source path of the precheck script inside container")
 	scriptDest := flag.String("script-dest", "/opt/compute-sentry/bin/precheck.sh", "Destination path of the precheck script on the host")
 
+	// Health evaluation parameters
+	windowSize := flag.Int64("window-size", 10, "Sliding window size in seconds for health evaluation")
+	errorCountLimit := flag.Int64("error-count-limit", 5, "Max violations within window to trigger unhealthy")
+	thresholdUs := flag.Int64("threshold-us", 500, "Threshold in microseconds for slow operation detection")
+
 	flag.Parse()
 
 	log.Println("Starting Compute-Sentry Agent...")
@@ -67,9 +72,24 @@ func main() {
 		}
 	}()
 
-	// 6. Main Loop: Forward events to exporter
+	// 6. Start HealthEvaluator
+	evaluator := collector.NewHealthEvaluator(*windowSize, *errorCountLimit, *thresholdUs)
+	if err := evaluator.Start(nodeName); err != nil {
+		log.Printf("WARNING: Failed to start health evaluator: %v (continuing without health evaluation)", err)
+	} else {
+		log.Printf("HealthEvaluator started: window=%ds, limit=%d, threshold=%dus",
+			*windowSize, *errorCountLimit, *thresholdUs)
+	}
+
+	// 7. Main Loop: Forward events to exporter and evaluator
 	for event := range col.MetricsChan {
 		exp.Record(event)
+		// Also send to evaluator for health checking
+		select {
+		case evaluator.MetricsChan() <- event:
+		default:
+			// Channel full, skip
+		}
 	}
 }
 

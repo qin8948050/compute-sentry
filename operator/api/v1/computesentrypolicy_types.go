@@ -35,20 +35,20 @@ type ComputeSentryPolicySpec struct {
 	// Thresholds defines performance health thresholds.
 	// +optional
 	Thresholds Thresholds `json:"thresholds,omitempty"`
+
+	// EvalConfig defines health evaluation parameters for the Agent.
+	// +optional
+	EvalConfig EvalConfig `json:"evalConfig,omitempty"`
+
+	// Actions defines remediation actions when health check fails.
+	// +optional
+	Actions Actions `json:"actions,omitempty"`
 }
 
 // SpyConfig defines the configuration for the Spy library injection.
 type SpyConfig struct {
 	// Enabled indicates if the Spy library should be injected.
 	Enabled bool `json:"enabled"`
-
-	// Image is the sidecar or init container image containing the spy library.
-	// +optional
-	Image string `json:"image,omitempty"`
-
-	// Path is the path to the libcompute-sentry-spy.so inside the container.
-	// +optional
-	Path string `json:"path,omitempty"`
 }
 
 // Thresholds defines performance health thresholds.
@@ -60,6 +60,43 @@ type Thresholds struct {
 	// MaxJitterUs is the maximum allowed jitter in microseconds.
 	// +optional
 	MaxJitterUs int64 `json:"maxJitterUs,omitempty"`
+
+	// MinP2PBandwidthGbps is the minimum required P2P bandwidth in Gbps.
+	// +optional
+	MinP2PBandwidthGbps int64 `json:"minP2PBandwidthGbps,omitempty"`
+
+	// MinHbmBandwidthGbps is the minimum required HBM bandwidth in Gbps.
+	// +optional
+	MinHbmBandwidthGbps int64 `json:"minHbmBandwidthGbps,omitempty"`
+}
+
+// GovernanceConfig is the serialized configuration injected into Pods.
+// It combines Thresholds and EvalConfig for consumption by the Agent.
+type GovernanceConfig struct {
+	Thresholds Thresholds `json:"thresholds"`
+	EvalConfig EvalConfig `json:"evalConfig"`
+}
+
+// EvalConfig defines health evaluation parameters for the Agent
+type EvalConfig struct {
+	// WindowSize is the time window (in seconds) for sliding window evaluation
+	// +optional
+	WindowSize int64 `json:"windowSize,omitempty"`
+
+	// ErrorCountLimit is the number of violations within the window to trigger unhealthy
+	// +optional
+	ErrorCountLimit int64 `json:"errorCountLimit,omitempty"`
+}
+
+// Actions defines remediation actions when health check fails
+type Actions struct {
+	// EnableTaint enables tainting the node as NoSchedule when unhealthy
+	// +optional
+	EnableTaint bool `json:"enableTaint,omitempty"`
+
+	// EnableEvict enables evicting the pod when unhealthy
+	// +optional
+	EnableEvict bool `json:"enableEvict,omitempty"`
 }
 
 // ComputeSentryPolicyStatus defines the observed state of ComputeSentryPolicy.

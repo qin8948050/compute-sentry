@@ -18,8 +18,25 @@ static LockFreeQueue<MetricEvent> event_queue;
 static std::atomic<bool> running(true);
 static std::thread background_thread;
 
-// Cache for GPU model
+// Cache for GPU and Pod info
 static char cached_gpu_model[32] = "unknown";
+static char cached_pod_name[64] = "unknown";
+static char cached_pod_namespace[64] = "unknown";
+
+// Detect Pod info from environment
+void DetectPodInfo() {
+    const char* pod_name = getenv("COMPUTE_SENTRY_POD_NAME");
+    if (pod_name) {
+        strncpy(cached_pod_name, pod_name, 63);
+        cached_pod_name[63] = '\0';
+    }
+
+    const char* pod_namespace = getenv("COMPUTE_SENTRY_POD_NAMESPACE");
+    if (pod_namespace) {
+        strncpy(cached_pod_namespace, pod_namespace, 63);
+        cached_pod_namespace[63] = '\0';
+    }
+}
 
 // Dynamically detect GPU model using CUDA Runtime API
 void DetectGPUModel() {
@@ -63,6 +80,7 @@ void DetectGPUModel() {
 
 void BackgroundSender() {
     DetectGPUModel();
+    DetectPodInfo();
     const char* env_path = getenv("COMPUTE_SENTRY_UDS_PATH");
     std::string path = env_path ? env_path : "/var/run/compute-sentry/spy.sock";
     UDSClient client(path);
@@ -106,6 +124,8 @@ int ncclAllReduce(const void* sendbuff, void* recvbuff, size_t count,
     MetricEvent event;
     event.type = MetricEvent::Type::NCCL_ALL_REDUCE;
     strncpy(event.gpu_model, cached_gpu_model, 31);
+    strncpy(event.pod_name, cached_pod_name, 63);
+    strncpy(event.pod_namespace, cached_pod_namespace, 63);
     event.duration_us = duration;
     event.count = count;
     event_queue.Push(event);

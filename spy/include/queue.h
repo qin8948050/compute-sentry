@@ -49,7 +49,9 @@ struct MetricEvent {
     };
 
     Type type;
-    char gpu_model[32]; // New field for precise GPU identification
+    char gpu_model[32];
+    char pod_name[64];      // New: for precise identification
+    char pod_namespace[64]; // New: for precise identification
     long long duration_us;
     size_t count;
 };
