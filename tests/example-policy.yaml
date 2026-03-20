@@ -1,0 +1,32 @@
+apiVersion: config.aiguard.io/v1
+kind: ComputeSentryPolicy
+metadata:
+  name: example-gpu-policy
+  namespace: default # 或者您的 Pod 所在的命名空间
+spec:
+  # 选择器：定义这个策略适用于哪些 Pod
+  # 这里的例子是匹配所有带有 app: test-injection 标签的 Pod
+  selector:
+    matchLabels:
+      app: test-injection
+  
+  # SpyConfig：配置 Spy Sidecar 的注入行为
+  spyConfig:
+    enabled: true # 如果为 true，则在匹配的 Pod 上注入 Spy 相关的 sidecar
+
+  # Thresholds：定义性能健康阈值
+  thresholds:
+    maxNcclLatencyUs: 150        # NCCL AllReduce 操作的最大允许延迟 (微秒)
+    maxJitterUs: 50              # NCCL 操作的最大允许抖动 (微秒) - 注意：目前 Agent 尚未实现对 Jitter 的具体评估逻辑
+    minP2PBandwidthGbps: 25      # P2P 内存拷贝的最小带宽要求 (GB/s) - 用于 InitContainer 预检
+    minHbmBandwidthGbps: 1200    # HBM (高带宽显存) 的最小带宽要求 (GB/s) - 用于 InitContainer 预检
+
+  # EvalConfig：定义 Agent 侧的健康评估参数
+  evalConfig:
+    windowSize: 10               # 滑动窗口大小 (秒)，在此窗口内评估错误次数
+    errorCountLimit: 5           # 在 windowSize 内，允许的最大违规次数，超过则标记为 unhealthy
+
+  # Actions：定义当 Pod 被标记为 unhealthy 时的补救措施
+  actions:
+    enableTaint: true            # 如果为 true，则给 Pod 所在节点打上污点 (NoSchedule)
+    enableEvict: true            # 如果为 true，则驱逐该 unhealthy 的 Pod

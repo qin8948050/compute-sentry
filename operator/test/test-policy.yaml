@@ -1,0 +1,16 @@
+apiVersion: config.aiguard.io/v1
+kind: ComputeSentryPolicy
+metadata:
+  name: strict-training-policy
+spec:
+  selector:
+    matchLabels:
+      app: llm-train
+  spyConfig:
+    enabled: true
+  thresholds:
+    maxNcclLatencyUs: 100  # 极严阈值
+    minP2PBandwidthGbps: 30
+  evalConfig:
+    windowSize: 5
+    errorCountLimit: 3

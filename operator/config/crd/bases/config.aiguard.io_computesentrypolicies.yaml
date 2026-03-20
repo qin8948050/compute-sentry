@@ -40,6 +40,33 @@ spec:
           spec:
             description: spec defines the desired state of ComputeSentryPolicy
             properties:
+              actions:
+                description: Actions defines remediation actions when health check
+                  fails.
+                properties:
+                  enableEvict:
+                    description: EnableEvict enables evicting the pod when unhealthy
+                    type: boolean
+                  enableTaint:
+                    description: EnableTaint enables tainting the node as NoSchedule
+                      when unhealthy
+                    type: boolean
+                type: object
+              evalConfig:
+                description: EvalConfig defines health evaluation parameters for the
+                  Agent.
+                properties:
+                  errorCountLimit:
+                    description: ErrorCountLimit is the number of violations within
+                      the window to trigger unhealthy
+                    format: int64
+                    type: integer
+                  windowSize:
+                    description: WindowSize is the time window (in seconds) for sliding
+                      window evaluation
+                    format: int64
+                    type: integer
+                type: object
               selector:
                 description: Selector is a label selector to identify which Pods this
                   policy applies to.
@@ -93,14 +120,6 @@ spec:
                   enabled:
                     description: Enabled indicates if the Spy library should be injected.
                     type: boolean
-                  image:
-                    description: Image is the sidecar or init container image containing
-                      the spy library.
-                    type: string
-                  path:
-                    description: Path is the path to the libcompute-sentry-spy.so
-                      inside the container.
-                    type: string
                 required:
                 - enabled
                 type: object
@@ -114,6 +133,16 @@ spec:
                   maxNcclLatencyUs:
                     description: MaxNCCLLatencyUs is the maximum allowed NCCL latency
                       in microseconds.
+                    format: int64
+                    type: integer
+                  minHbmBandwidthGbps:
+                    description: MinHbmBandwidthGbps is the minimum required HBM bandwidth
+                      in Gbps.
+                    format: int64
+                    type: integer
+                  minP2PBandwidthGbps:
+                    description: MinP2PBandwidthGbps is the minimum required P2P bandwidth
+                      in Gbps.
                     format: int64
                     type: integer
                 type: object

@@ -7,8 +7,15 @@ RUN mkdir -p build && cd build && rm -rf * && cmake .. && make
 
 # Build Stage for Agent
 FROM m.daocloud.io/docker.io/golang:1.25 AS agent-builder
+WORKDIR /app
+
+# 复制 agent 模块相关文件
+COPY ./agent/go.mod ./agent/go.sum ./agent/
+
+# 复制 operator 模块（因为 agent 依赖它，通过 replace 指令）
+COPY ./operator ./operator/ 
+
 WORKDIR /app/agent
-COPY ./agent/go.mod ./agent/go.sum ./
 RUN go mod download
 COPY ./agent .
 RUN CGO_ENABLED=0 GOOS=linux go build -o agent main.go
