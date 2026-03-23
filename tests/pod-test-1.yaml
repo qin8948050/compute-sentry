@@ -1,0 +1,14 @@
+# pod-test-1.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-test-1
+  namespace: default
+  labels:
+    app: node-healing-test
+spec:
+  containers:
+  - name: pause
+    image: m.daocloud.io/docker.io/curlimages/curl:latest
+    command: ["/bin/sh", "-c", "sleep 3600"] # 保持 Pod 运行
+  restartPolicy: Always

@@ -116,7 +116,7 @@ metadata:
 spec:
   containers:
   - name: pause
-    image: curlimages/curl:latest
+    image: m.daocloud.io/docker.io/curlimages/curl:latest
     command: ["/bin/sh", "-c", "sleep 3600"] # 保持 Pod 运行
   restartPolicy: Always
 ```
@@ -160,7 +160,7 @@ metadata:
 spec:
   containers:
   - name: pause
-    image: curlimages/curl:latest
+    image: m.daocloud.io/docker.io/curlimages/curl:latest
     command: ["/bin/sh", "-c", "sleep 3600"]
   restartPolicy: Always
 ---
@@ -175,7 +175,7 @@ metadata:
 spec:
   containers:
   - name: pause
-    image: curlimages/curl:latest
+    image: m.daocloud.io/docker.io/curlimages/curl:latest
     command: ["/bin/sh", "-c", "sleep 3600"]
   restartPolicy: Always
 ```

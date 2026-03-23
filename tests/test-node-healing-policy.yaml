@@ -1,0 +1,15 @@
+# test-node-healing-policy.yaml
+apiVersion: config.aiguard.io/v1
+kind: ComputeSentryPolicy
+metadata:
+  name: test-node-healing-policy
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: node-healing-test
+  actions:
+    enableTaint: true
+    enableEvict: true
+    nodeTaintThreshold:
+      minUnhealthyPodsCount: 2 # 示例：至少2个Pod异常才打污点。您可以根据需要调整为 minUnhealthyPodsPercentage。

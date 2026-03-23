@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-test-3
+  namespace: default
+    #annotations:
+    # compute-sentry.aiguard.io/inject: "true"
+  labels:
+    app: node-healing-test
+spec:
+  containers:
+  - name: pause
+    image: m.daocloud.io/docker.io/curlimages/curl:latest
+    command: ["/bin/sh", "-c", "sleep 3600"]
+  restartPolicy: Always
