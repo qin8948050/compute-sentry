@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -171,10 +172,11 @@ func (m *PodMutator) Handle(ctx context.Context, req admission.Request) admissio
 
 	// Inject InitContainer for Pre-check
 	pod.Spec.InitContainers = append(pod.Spec.InitContainers, corev1.Container{
-		Name:    "compute-sentry-precheck",
-		Image:   "m.daocloud.io/docker.io/busybox:latest", // In real world, use an image with diagnostic tools
-		Command: []string{"sh", "-c", "/opt/compute-sentry/bin/precheck.sh"},
-		Env:     precheckEnvs,
+		Name:                     "compute-sentry-precheck",
+		Image:                    "m.daocloud.io/docker.io/nvidia/cuda:12.0.0-base-ubuntu22.04",
+		Command:                  []string{"sh", "-c", "/opt/compute-sentry/bin/precheck.sh"},
+		Env:                      precheckEnvs,
+		Resources:                corev1.ResourceRequirements{Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")}},
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      "compute-sentry-bin",
